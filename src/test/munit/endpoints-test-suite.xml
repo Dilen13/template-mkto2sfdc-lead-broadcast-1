@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:mock="http://www.mulesoft.org/schema/mule/mock" xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns:synchronize="http://www.mulesoft.org/schema/mule/synchronize" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc"
+	xmlns:marketo="http://www.mulesoft.org/schema/mule/marketo"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:spring="http://www.springframework.org/schema/beans" xmlns:core="http://www.mulesoft.org/schema/mule/core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/marketo http://www.mulesoft.org/schema/mule/marketo/current/mule-marketo.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/synchronize http://www.mulesoft.org/schema/mule/synchronize/current/mule-synchronize.xsd
+http://www.mulesoft.org/schema/mule/mock http://www.mulesoft.org/schema/mule/mock/current/mule-mock.xsd">
+    <munit:config name="munit" doc:name="MUnit configuration" mock-connectors="false" mock-inbounds="false"/>
+    <context:property-placeholder location="mule.test.properties" />
+    <spring:beans>
+        <spring:import resource="classpath:endpoints.xml"/>
+        <spring:import resource="classpath:config.xml"/>
+        <spring:import resource="classpath:businessLogic.xml"/>
+        <spring:import resource="classpath:errorHandling.xml"/>
+    </spring:beans>
+    <munit:test name="endpoints-test-suite-triggerFlowTest" description="Test">
+        <synchronize:run-and-wait  doc:name="Synchronize">
+            <flow-ref name="triggerFlow" doc:name="Call triggerFlow"/>
+        </synchronize:run-and-wait>
+        <expression-component doc:name="Wait for 10 seconds to complete the batch"><![CDATA[Thread.sleep(10000);]]></expression-component>
+        <flow-ref name="retrieveLeadFromSalesforceBFlow" doc:name="Call retrieveLeadFromSalesforceBFlow"/>
+        <munit:assert-on-equals message="The lead should be migrated to the SFDC B instance!" expectedValue="#[flowVars.email]" actualValue="#[flowVars.sfdcLead.get(&quot;Email&quot;)]" doc:name="Assert Equals"/>
+<!--         <flow-ref name="deleteLeadFromMarketoFlow" doc:name="Call deleteLeadFromMarketoFlow"/> -->
+    </munit:test>
+    <munit:after-test name="endpoints-test-suiteAfter_Test" description="After tests actions">
+        <flow-ref name="deleteLeadFromSalesforceBFlow" doc:name="Call deleteLeadFromSalesforceBFlow"/>
+        <flow-ref name="deleteLeadFromMarketoFlow" doc:name="Call deleteLeadFromMarketoFlow"/>
+    </munit:after-test>
+    <munit:before-test name="endpoints-test-suiteBefore_Test" description="Before tests actions">
+        <set-variable variableName="email" value="#[&quot;mkttest&quot; + (int)(Math.random()*100000)+ &quot;@test.com&quot;]" doc:name="Set email variable"/>
+        <flow-ref name="createLeadInMarketoFlow" doc:name="Call createLeadInMarketoFlow"/>
+    </munit:before-test>
+    
+    <sub-flow name="createLeadInMarketoFlow" >
+        <dw:transform-message doc:name="Prepare testing data for Marketo Lead">
+            <dw:set-payload><![CDATA[%dw 1.0
+ %output application/java 
+---
+[{ 
+	email : flowVars.email, 
+	firstName : "FirstNameTest", 
+	lastName : "LastNameTest" 
+ }]]]></dw:set-payload> 
+        </dw:transform-message>
+        <marketo:create-or-update-lead config-ref="Marketo_Configuration" doc:name="Create new Lead in Marketo"/>
+        <set-variable variableName="testLeadId" value="#[payload[0].Id]" doc:name="Set testLeadId variable"/>
+
+
+		<logger level="INFO" message=" --- Create Lead in Marketo with ID #[flowVars.testLeadId] , payload is: #[payload]" doc:name="Logger"/>
+	</sub-flow>
+
+	<sub-flow name="retrieveLeadFromSalesforceBFlow" >
+
+		<sfdc:query-single config-ref="SalesforceB"
+			query="SELECT Email, FirstName, LastName, Country, Company, Id, LastModifiedDate, Owner.Id, Owner.Name FROM Lead WHERE Email = '#[flowVars.email]'"
+			doc:name="Retrieve Lead from Salesforce B instance" />
+        <set-variable variableName="sfdcLead" value="#[payload]" doc:name="Set sfdcLead variable"/>
+		<logger level="INFO" message="Retrieve Lead from SFDC B result: #[payload]" doc:name="Logger"/>
+	</sub-flow>
+	<sub-flow name="deleteLeadFromMarketoFlow" >
+        <dw:transform-message doc:name="Prepare list of testing Leads IDs">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+[{
+	id: flowVars.testLeadId
+}]]]></dw:set-payload>
+        </dw:transform-message>
+        <marketo:delete-lead config-ref="Marketo_Configuration" doc:name="Delete testing Lead from Marketo"/>
+
+		<logger level="INFO" message="Remove Lead from Marketo result: #[payload]" doc:name="Logger"/>
+	</sub-flow>
+	<sub-flow name="deleteLeadFromSalesforceBFlow" >
+
+		<sfdc:delete config-ref="SalesforceB" doc:name="Delete migrated Leads from Salesforce">
+			<sfdc:ids ref="#[[flowVars.testLeadId]]" />
+		</sfdc:delete>
+		<logger level="INFO" message="Remove Lead from SFDC B result: #[payload]" doc:name="Logger"/>
+	</sub-flow>
+</mule>

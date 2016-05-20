@@ -39,11 +39,45 @@
 							<groupId>org.mule.modules</groupId>
 							<artifactId>mule-module-marketo</artifactId>
 						</inclusion>
-					</inclusions>
+					<inclusion>
+                            <groupId>com.mulesoft.munit.utils</groupId>
+                            <artifactId>munit-synchronize-module</artifactId>
+                        </inclusion>
+                    </inclusions>
 				</configuration>
 			</plugin>
-		</plugins>
-	</build>
+		<plugin>
+                <groupId>com.mulesoft.munit.tools</groupId>
+                <artifactId>munit-maven-plugin</artifactId>
+                <version>${munit.version}</version>
+                <executions>
+                    <execution>
+                        <id>test</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <coverage>
+                        <runCoverage>true</runCoverage>
+                        <formats>
+                            <format>html</format>
+                        </formats>
+                    </coverage>
+                </configuration>
+            </plugin>
+        </plugins>
+	<testResources>
+            <testResource>
+                <directory>src/test/munit</directory>
+            </testResource>
+        <testResource>
+                <directory>src/test/resources</directory>
+            </testResource>
+        </testResources>
+    </build>
 
 	<dependencies>
 
@@ -80,7 +114,24 @@
 			<artifactId>activemq-all</artifactId>
 			<version>5.9.0</version>
 		</dependency>
-	</dependencies>
+	<dependency>
+            <groupId>com.mulesoft.munit</groupId>
+            <artifactId>mule-munit-support</artifactId>
+            <version>${mule.munit.support.version}</version>
+            <scope>test</scope>
+        </dependency>
+    <dependency>
+            <groupId>com.mulesoft.munit</groupId>
+            <artifactId>munit-runner</artifactId>
+            <version>${munit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    <dependency>
+            <groupId>com.mulesoft.munit.utils</groupId>
+            <artifactId>munit-synchronize-module</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+    </dependencies>
 
 	<repositories>
 		<repository>
@@ -106,4 +157,8 @@
 		</repository>
 	</repositories>
 
+<properties>
+        <munit.version>1.2.0</munit.version>
+    <mule.munit.support.version>3.8.0</mule.munit.support.version>
+    </properties>
 </project>
